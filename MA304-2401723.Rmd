@@ -1,0 +1,804 @@
+---
+title: 'MA304 Assignment: An analysis of Crime data and Weather data in Colchester
+  in 2024'
+author: '2401723'
+date: "2025-03-21"
+output:
+  html_document: default
+---
+
+## Introduction 
+This report explores the relationship between weather patterns and crime rates in Colchester during the year 2024. Central research questions were: which season was the safest in Colchester? This leads to broader inquiries into whether crime patterns changed in response to fluctuations in weather conditions, and whether particular types of crime were more likely to occur in each seasons.
+
+To investigate these questions, two data sets were used. The first, crime24.csv, contains crime data for Colchester throughout 2024, detailing the nature, location, and timing of reported incidents. The second, temp24.csv, provided daily meteorological data from a weather station, capturing variables such as temperature, rainfall, humidity, sunlight hours among others.
+
+Before any analysis of the data, data pre-processing steps were carried out to ensure both data sets were clean, consistent, and properly formatted. This involved handling missing values, parsing dates, generating season-based groupings, and aggregating observations for meaningful comparisons. Once prepared, the data sets were merged using a common variable (year_month), enabling an integrated view of weather and crime in Colchester.
+
+The analysis incorporated a variety of visual and statistical methods to explore potential relationships between weather conditions and crime. These included summary tables, bar and density plots, violin plots, scatterplots, correlation matrices, time series visualisations with smoothing, and an interactive spatial map. These tools provided an evidence-based foundation for interpreting the temporal and spatial dynamics of crime in Colchester.
+
+## Data Preparation
+The data preparation stage began with the installation and loading of several R packages required for the analysis. These libraries included tidyverse, lubridate, ggplot2, plotly, and leaflet, among others, each providing essential functions for data manipulation, visualisation, and interactivity.
+
+Following this, the two data sets crime24.csv and temp24.csv were imported into the R environment and previewed. This initial exploration provided insight into the structure and contents of each data set and guided the necessary data pre-processing steps.
+
+It was observed that both data sets contained a number of irrelevant or redundant columns which were subsequently removed to streamline the analysis. Additionally, missing values were present in several variables. In the case of the weather data, missing temperature and rainfall values were imputed where appropriate using mean or median substitution. However, in instances where values were missing across multiple key fields or entire rows, such records were excluded to maintain data integrity.
+
+Further cleaning included the parsing and formatting of date variables. The crime data set featured dates in a "YYYY-MM" format, while the weather data set used full "YYYY-MM-DD" dates. To enable merging and season aggregation, both date formats were standardised, and a new variable (year_month) was generated in each data set to represent monthly time intervals. A season variable was also created using the month of each observation to classify entries into Winter, Spring, Summer, or Autumn.
+
+Finally, the cleaned data sets were merged using the year_month variable, resulting in a combined data set that allowed for comparative analysis between monthly crime levels and prevailing weather conditions. This merged data set formed the foundation for some subsequent visualisations and statistical interpretations.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#install relevant packages 
+#install.packages("dplyr")
+#install.packages("corrgram")
+#install.packages("ggplot2",dependencies=TRUE)
+#install.packages("tidyverse")
+#install.packages("ggmap")
+#install.packages("plotly")
+#install.packages("leaflet")
+#install.packages("corrplot")
+#install.packages("DT")
+#install.packages("xts")
+#install.packages("ggcorrplot")
+
+#load relevant packages
+library(dplyr)
+library(corrgram)
+library(ggplot2)
+library(hexbin)       #see lab6 
+library(tidyverse)
+library(lubridate)
+library(ggmap)
+library(sf)
+#library(janitor)
+library(plotly)       # For interactivity
+library(DT)          # For interactive tables
+library(leaflet)      # For maps
+library(corrplot)     # For correlation analysis
+library(xts)
+library(ggcorrplot)
+```
+
+### Read and preview of data:
+```{r}
+#load data sets 
+crime <- read.csv("crime24.csv")
+temp <- read.csv("temp24.csv")
+
+# Preview data sets
+head(crime)
+head(temp)
+dim(crime)
+dim(temp)
+```
+The preview of data revealed there are 6304 rows and 13 columns in the crime data, while there are 366 rows and 18 columns in the temp data.
+
+**The variables in the crime data set are:**
+
+X: row indexes without variable title
+
+category: Category of the crime (https://data.police.uk/docs/method/crime-street/)
+
+persistent_id: 64-character unique identifier for that crime. (This is different to the existing 'id' attribute, which is not guaranteed to always stay the same for each crime.)
+
+date: Date of the crime in format: YYYY-MM
+
+latitude: Latitude coordinate
+
+longitude: Longitude coordinate
+
+street_id: Unique identifier for the street
+
+street_name: Name of the location. An approximation of where the crime happened
+
+context: Extra information about the crime (if applicable)
+
+id: ID of the crime. This ID only relates to the API, it is NOT a police identifier
+
+location_type: The type of the location. Either Force or BTP: Force indicates a normal police force location; BTP indicates a British Transport Police location. BTP locations fall within normal police force boundaries.
+
+location_subtype: For BTP locations, the type of location at which this crime was recorded.
+
+outcome_status: The category and date of the latest recorded outcome for the crime
+
+**The variables in the temp data set are:**
+
+station_ID - WMO station identifier
+
+Date - date (and time) of observations. Format: YYYY-MM-DD
+
+Viskm - visibility in kilometres
+
+TemperatureCAvg - average air temperature at 2 metres above ground level. Values given in Celsius degrees
+
+TemperatureCMax - maximum air temperature at 2 metres above ground level. Values given in Celsius degrees
+
+TemperatureCMin - minimum air temperature at 2 metres above ground level. Values given in Celsius degrees
+
+TdAvgC - average dew point temperature at 2 metres above ground level. Values given in Celsius degrees
+
+HrAvg - average relative humidity. Values given in %
+
+WindkmhDir - wind direction
+
+WindkmhInt - wind speed in km/h
+
+WindkmhGust - wind gust in km/h
+
+PresslevHp - Sea level pressure in hPa
+
+Precmm - precipitation totals in mm
+
+TotClOct - total cloudiness in octants
+
+lowClOct - cloudiness by low level clouds in octants
+
+SunD1h - sunshine duration in hours
+
+PreselevHp - atmospheric pressure measured at altitude of station in hPa
+
+SnowDepcm - depth of snow cover in centimetres
+
+* This information was gathered from the data set links:
+https://ukpolice.njtierney.com/reference/ukp_crime.html
+https://bczernecki.github.io/climate/reference/meteo_ogimet.html
+
+
+```{r}
+#output data type and structure of data sets 
+str(crime)
+str(temp)
+```
+To streamline the datasets and retain only relevant variables for analysis, several columns were removed. From the crime data, the columns X, context, location-subtype, and persistent_id were deleted. The X column contained row indices, which were not necessary for analysis. The context column consisted entirely of missing values, offering no usable information. The location-subtype column contained corrupted or malformed entries, including random quotation marks, rendering it unreliable. Similarly, the persistent_id column featured either missing values or random alphanumeric strings that lacked consistent formatting and interpretability.
+
+From the weather data set, the columns PresslevHp and SnowDepcm were excluded. Both had substantial missing values, and preliminary checks indicated they would not contribute meaningfully to the analysis, especially as snowfall levels in Colchester are often minimal or inconsistent.
+
+Following this structural clean-up, the data sets underwent further refinement. Missing values in numeric fields, such as temperature and precipitation, were imputed using the mean of the corresponding column. This approach preserved the data set's size while minimising the influence of outliers or gaps in measurement.
+
+The date formats in both data sets were also standardised. The crime data's date variable, originally formatted as "YYYY-MM", was parsed to generate a full date representation ("YYYY-MM-01") for consistency. The weather data’s Date variable, already in "YYYY-MM-DD" format, was converted to a proper Date class in R. From these, a new variable—year_month—was derived in both data sets to enable monthly aggregation. Additionally, a season variable was added by mapping each observation’s month to one of the four meteorological seasons: Winter (December–February), Spring (March–May), Summer (June–August), and Autumn (September–November).
+
+These cleaning and formatting steps ensured both data sets were aligned, enabling accurate merging and insightful visual exploration in the respective subsequent analysis stages.
+
+```{r}
+#basic statistics 
+summary(crime)
+summary(temp)
+
+```
+
+## Data cleaning:
+```{r}
+#1.Drop irrelevant columns:
+#crime, 13 columns - 4 = 9 columns left  
+crime<- crime%>%select(-c(X, context, location_subtype, persistent_id))
+
+#temp, 18 columns - 2 = 16 columns left 
+temp<- temp%>%select(-c(PreselevHp,SnowDepcm))
+
+#check should output 9 and 16 
+length(crime)
+length(temp)
+
+```
+
+```{r}
+#2.Handling Missing values (NAs):
+#checking total nas in each column of both data sets  
+colSums(is.na(crime))
+colSums(is.na(temp))
+
+#where the outcome_status==NA, impute Unknown
+crime$outcome_status[is.na(crime$outcome_status)]<- "Unknown"
+
+#where the Precmm ==NA, impute column median 
+temp$Precmm[is.na(temp$Precmm)]<- median(temp$Precmm, na.rm=TRUE)
+
+#Where the lowClOct== NA, impute column median 
+temp$lowClOct[is.na(temp$lowClOct)]<- median(temp$lowClOct, na.rm=TRUE)
+
+
+#re-check, should be zero 
+sum(is.na(crime))
+sum(is.na(temp))
+
+```
+
+
+```{r}
+#3.date and Date variable format, and extract month num for season assignment:
+
+#crime, extract month num so that i can assign season:
+crime <- crime %>%
+  #create 4 new columns date_parsed, year_month, month num and season:
+  mutate(
+    # Convert to Date format first
+    date_parsed = as.Date(paste0(date, "-01")), #forcing date parse 
+    
+    #for consistency create year_month variable and assign existing date               variable to it. Because crime date is already in YYYY-MM format keep as is:
+    year_month = format(date),
+    
+    #extract month num from date:
+    month_num = as.numeric(format(date_parsed, "%m")),
+    
+    #assign seasons:
+    crime_season = case_when(
+      month_num %in% 3:5   ~ "Spring",
+      month_num %in% 6:8   ~ "Summer",
+      month_num %in% 9:11  ~ "Autumn",
+      TRUE                 ~ "Winter"))
+
+
+#temp, extract month num so that i can assign season:
+temp <- temp %>%
+  mutate(
+    # Convert to Date format first
+    Date_parsed = as.Date(Date),
+    
+    # Create YYYY-MM (to match crime data)
+    year_month = format(Date_parsed, "%Y-%m"),
+    
+    # Extract month number for seasons
+    month_num = as.numeric(format(Date_parsed, "%m")),
+    
+    # Assign seasons (same logic as crime data)
+    temp_season = case_when(
+      month_num %in% 3:5   ~ "Spring",
+      month_num %in% 6:8   ~ "Summer",
+      month_num %in% 9:11  ~ "Autumn",
+      TRUE                 ~ "Winter"))
+
+# Check crime data
+crime %>% 
+  select(year_month, month_num, crime_season) %>% 
+  distinct()
+
+# Check temp data
+temp %>% 
+  select(year_month,month_num, temp_season) %>%
+  distinct()
+```
+
+
+```{r}
+#check data types and entries, making sure date parsed in both data sets 
+glimpse(crime)
+glimpse(temp)
+```
+
+note: that both temp_season and crime_season are interchangeable because they are based on month_num which both data sets have 12 months all from 2024 and season mapping was mapped following same month definitions identically for each data set.
+
+## Exploratory Data Analysis
+* Tables and Two-way tables
+
+```{r}
+#one way TABLE: crime counts per category in descending order 
+crime_table <- crime%>%
+  count(category, sort=TRUE)
+
+knitr::kable(crime_table, caption = "Crime category counts in Colchester (2024)")
+
+#one way TABLE: weather averages by season 
+temp_table <- temp %>%
+  group_by(temp_season) %>%
+  summarise(
+    "avg_temp (°C)" = round(mean(TemperatureCAvg),2), #daily avg to seaonal avg
+    "max_temp (°C)" = round(mean(TemperatureCMax),2), #daily max to seaonal max
+    "min_temp (°C)" = round(mean(TemperatureCMin),2),
+    "total_rainfall (mm)" = sum(Precmm), #total rainfall per season
+    "avg_sunshine (hours)" = round(mean(SunD1h),2), #avg daily sunshine in hours
+    .groups = "drop") #drop all other variables
+ 
+knitr::kable(temp_table, caption = "Weather Averages by season (2024)")
+
+
+#TWO WAY TABLE OF crime category vs temp_season:
+#answers, question: in what season does x crime occur?
+#which crimes occur in each season?
+#which season had the most crime?
+two_way_table <- crime%>%
+  count(category, crime_season, name= "n")%>%
+  
+#pivot to wider format for seasons to be columns & crime count for each season in rows
+  pivot_wider(names_from = crime_season, values_from = n)%>%
+  
+#add row total for category 
+  mutate(
+    Total = rowSums(across(where(is.numeric))))%>% 
+  
+
+#add column total for seasons (sum of crimes per season)
+bind_rows(
+    summarise(., 
+              category= "Seasons_Totals",
+              across(where(is.numeric), sum)))%>%  #Sum all numeric column
+  
+arrange(desc(Total)) #sort by most frequent crime category
+
+knitr::kable(two_way_table, caption = "Crime Category counts by Season in Colchester (2024)")
+
+
+#TWO WAY TABLE: for crime type counts per month 
+tw_table <- crime%>%
+  count(category, month_num, name= "m")%>% #confirm that there are no missing values by adding , na.rm=TRUE
+  
+#pivot to wider format for seasons to be columns & crime count for each season in rows
+  pivot_wider(names_from = month_num, values_from = m)%>%
+  
+#add row total for category 
+  mutate(
+    Total = rowSums(across(where(is.numeric))))%>% 
+  arrange(desc(Total),na.rm=TRUE) #sort by most frequent crime category
+
+knitr::kable(tw_table, caption = "Crime Category counts by month in Colchester (2024)")
+
+```
+
+Observations:
+
+First table: Crime category counts in Colchester (2024)
+
+* Violent crime recorded 2,420 cases.
+
+* Anti-social behaviour accounted for 710 cases.
+
+* Possession of weapons had the lowest count with 65 cases.
+
+Second table: Weather Averages by season (2024)
+
+* Winter showed the lowest average temperature (6.12 °C).
+
+* Summer showed the highest maximum temperature (21.67 °C).
+
+* Spring had the most rainfall (194.2 mm).
+
+* Autumn experienced second relatively low average hours of sunlight.
+
+
+Third table: Crime counts by season in Colchester (2024)
+
+* Largest amount of crime occurred in Summer (1631), followed by Winter (1567), Autumn (1565) and then spring (1541).
+
+Fourth table: Crime Category counts by month in Colchester (2024) 
+
+* Deeper view of frequency of crime types that occurred in colchester 2024 by month.
+
+* Seems like there were no robberies that occurred in December 2024.
+
+## Visualisations 
+### Bar plot 
+```{r}
+#crime counts per category bar plot 
+gg_crime_bar <- crime %>%
+  count(category) %>%
+  ggplot(aes(x = reorder(category, n), y = n, fill = category), alpha=0.9)+
+  geom_col(show.legend = FALSE) + # Remove legend 
+  coord_flip() +  # Horizontal bars
+  labs(title = "Crime Frequency by category in Colchester 2024", x = "Crime Category", y = "Frequency")+
+  theme_minimal()
+
+#Interactive plot 
+ploty_crime_bar<- ggplotly(gg_crime_bar)%>% layout(showlegend = FALSE)
+ploty_crime_bar
+
+```
+
+Observation for bar plot: Crime Frequency by category in Colchester 2024
+
+* Violent crime occurred most frequently.
+
+* Possession of weapons occurred least frequently.
+
+### Histogram and Density plots
+
+```{r}
+#Temperature distribution
+avg_temp_hist <- ggplot(temp, aes(x = TemperatureCAvg)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Temperature Distribution in Colchester (2024)", x = "Temperature (°C)")+
+  theme_minimal()
+
+ggplotly(avg_temp_hist)
+
+
+```
+
+```{r}
+#Max Temperature distribution
+max_temp_hist <- ggplot(temp, aes(x = TemperatureCMax)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Maximum Temperature Distribution in Colchester (2024)", x = "Maximum Temperature (°C)")+
+  theme_minimal()
+ggplotly(max_temp_hist)
+```
+
+```{r}
+#Min Temperature distribution
+min_temp_hist <- ggplot(temp, aes(x = TemperatureCMin)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Minimum Temperature Distribution in Colchester (2024)", x = "Minimum Temperature (°C)")+
+  theme_minimal()
+ggplotly(min_temp_hist)
+```
+
+```{r}
+#TdAvgC, (average dew point Temperature) distribution
+TdAvgC_hist <- ggplot(temp, aes(x = TdAvgC)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Average Dew point Temperature Distribution in Colchester (2024)", x = "Average Dew point Temperature (°C)")+
+  theme_minimal()
+ggplotly(TdAvgC_hist)
+```
+
+```{r}
+#HrAvg - average relative humidity. Values given in %
+HrAvg_hist <- ggplot(temp, aes(x = HrAvg)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Average Relative Humidity Distribution in Colchester (2024)", x = "Average Relative Humidity ( %)")+
+  theme_minimal()
+ggplotly(HrAvg_hist)
+
+```
+
+```{r}
+#Viskm - visibility in kilometres
+Viskm_hist <- ggplot(temp, aes(x = VisKm)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "visibility Distribution in Colchester (2024)", x = "visibility (km)")+
+  theme_minimal()
+ggplotly(Viskm_hist)
+```
+
+```{r}
+#WindkmhInt - wind speed in km/h
+WindkmhInt_hist <- ggplot(temp, aes(x = WindkmhInt)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Wind Speed Distribution in Colchester (2024)", x = "Wind Speed (km/h)")+
+  theme_minimal()
+ggplotly(WindkmhInt_hist)
+```
+
+```{r}
+#WindkmhGust - wind gust in km/h
+WindkmhGust_hist <- ggplot(temp, aes(x = WindkmhGust)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Wind Gust Distribution in Colchester (2024)", x = "Wind Gust (km/h)")+
+  theme_minimal()
+ggplotly(WindkmhGust_hist)
+```
+
+```{r}
+#PresslevHp - Sea level pressure in hPa
+PresslevHp_hist <- ggplot(temp, aes(x = PresslevHp)) +
+  geom_histogram(binwidth = 2, fill = "steelblue", color = "white") +
+  labs(title = "Sea Level Pressure Distribution in Colchester (2024)", x = "Sea Level Pressure (hPa)")+
+  theme_minimal()
+ggplotly(PresslevHp_hist)
+
+```
+
+Observation of histograms:
+
+* Most weather variables followed approximately normal distributions.
+
+* Humidity and pressure distributions were skewed to the right.
+
+```{r}
+#Precmm - precipitation totals in mm
+rainfall_denisty <- ggplot(temp, aes(x = Precmm)) +
+  geom_density(fill = "blue", alpha=0.5) +
+  labs(title = "Total rainfall Distribution in Colchester (2024)", x = "Precipitation (mm)")+
+  theme_minimal()
+ggplotly(rainfall_denisty)
+```
+
+
+```{r}
+#TotClOct - total cloudiness in octants
+cloudiness_denisty <- ggplot(temp, aes(x = TotClOct)) +
+  geom_density(fill = "blue", alpha=0.5) +
+  labs(title = "Total Cloudiness Distribution in Colchester (2024)", x = "Cloudiness (octants)")+
+  theme_minimal()
+ggplotly(cloudiness_denisty)
+
+```
+
+
+```{r}
+#lowClOct - cloudiness by low level clouds in octants
+low.cloudiness_denisty <- ggplot(temp, aes(x = lowClOct)) +
+  geom_density(fill = "blue", alpha=0.5) +
+  labs(title = "Cloudiness by low level clouds Distribution in Colchester (2024)", x = "Cloudiness by low level clouds (octants)")+
+  theme_minimal()
+ggplotly(low.cloudiness_denisty)
+
+```
+
+
+```{r}
+#SunD1h - sunshine duration in hours
+sun_density <- ggplot(temp, aes(x = SunD1h)) +
+  geom_density( fill = "blue", alpha=0.5) +
+  labs(title = "Sun Distribution in Colchester (2024)", x = "Sun (hours)")+
+  theme_minimal()
+ggplotly(sun_density)
+```
+
+Observation for denisty plots:
+Total rainfall Distribution in Colchester (2024):
+Density Observations:
+
+* Rainfall density peaked near 0 mm, indicating mostly dry days.
+
+* Cloudiness density increased with higher coverage.
+
+* Sunshine density peaked near zero, reflecting many overcast days.
+
+### Violin plot
+
+```{r}
+#merge data sets:
+
+# 1. Summarize crime data per month
+crime_monthly <- crime %>%
+  group_by(year_month, crime_season, category) %>%
+  summarise(
+    crime_count = n(),.groups = "drop")
+
+# 2. Summarize temperature data per month
+temp_monthly <- temp %>%
+  group_by(year_month, temp_season) %>%
+  summarise(
+    avg_temp = mean(TemperatureCAvg),
+    max_temp = mean(TemperatureCMax),
+    min_temp = mean(TemperatureCMin),
+    rainfall = mean(Precmm),
+    sunshine = mean(SunD1h),
+    .groups = "drop") 
+
+# 3. Join both summaries
+colchester_monthly <- left_join(crime_monthly, temp_monthly, by = "year_month")
+
+# Check
+glimpse(colchester_monthly)
+
+```
+
+```{r}
+#colchester_monthly <- crime %>%
+  #left_join(temp, by = "year_month")  # Ensure datasets are merged
+
+# crime counts vs sunshine violin plot
+crime_sun_violin <- ggplot(colchester_monthly,
+                          aes(x = factor(format(ym(year_month), "%b"),levels = month.abb),
+                              y = crime_count, colour = factor(format(ym(year_month), "%b")))) +
+  geom_violin(trim = FALSE) +
+  labs(title = "Crime Distribution by Month in Colchester 2024",
+       x= "Month",
+       y= "Number of Crimes") +
+  stat_summary(fun.y = median, geom='point')+
+  theme_minimal()
+  
+
+crime_sun_violin <-crime_sun_violin + guides(color=FALSE)
+
+ggplotly(crime_sun_violin) %>%
+  layout(hoverlabel = list(bgcolor = "white"),
+         xaxis = list(title = "Month"),
+         yaxis = list(title = "crime count"))
+```
+
+Observation for Violin, Crime Distribution by Month in Colchester 2024:
+
+* Crime was fairly evenly distributed throughout the year.
+
+* Autumn/Winter months (September, october, November, December and January) showed greater spread, suggesting more variability.
+
+### Scatter and Correlation plots
+
+```{r message=FALSE}
+sun.rain_scatter <- ggplot(temp, aes(x = SunD1h, y = Precmm)) +
+  geom_point(alpha = 0.5, color = "red") +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+  labs(title = "Sunshine vs. Rainfall", y = "rainfall (mm)", x = " Sunshine (hours)")
+ggplotly(sun.rain_scatter)
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# Scatter plot: max vs min temperature 
+max.min_scatter<-ggplot(temp, aes(x = TemperatureCMin, y = TemperatureCMax)) +
+  geom_point(alpha = 0.5, color= "red") +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+  labs(title = "Scatter Plot of Daily Min vs Max Temperatures", 
+       x = "Min Temperature (°C)", 
+       y = "Max Temperature (°C)")
+ggplotly(max.min_scatter)
+```
+
+
+```{r message=FALSE}
+# Scatter Plot of sunshine vs Max Temperatures
+sun.max_scatter<- ggplot(temp, aes(x = SunD1h, y = TemperatureCMax)) +
+  geom_point(alpha = 0.5, color= "red") +
+  geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+  labs(title = "Scatter Plot of Sunshine vs Max Temperatures", 
+       x = "sunshine (hours)", 
+       y = "Max Temperature (°C)")
+ggplotly(sun.max_scatter)
+```
+
+observation for scatter plots:
+Sunshine vs. Rainfall:
+
+* weak negative association, lower percepititation (0.0 mm) seemed to correlate with higher sunshine hours (10.2). See plot steel blue trend.
+
+Scatter Plot of Daily Min vs Max Temperatures:
+
+* strong positive association, higher min temperature seemed to correlate with higher max temperatures. See plot steel blue trend
+
+Scatter Plot of Sunshine vs Max Temperatures:
+
+* moderate positive association, higher max temperatures seemed to correlate with higher sunshine hours. See plot steel blue trend.
+
+```{r}
+#correlation analysis between temp variables and crime counts
+#library(ggcorrplot)
+numeric_cols <- colchester_monthly %>% select(where(is.numeric))
+
+pval.cor<- cor_pmat(numeric_cols)
+
+corrmat<-round(cor(numeric_cols),1) 
+  
+colch.monthly_cor<- ggcorrplot(corrmat, hc.order = TRUE, type="lower", 
+                               p.mat=pval.cor, sig.level= 0.01, insig= "pch", 
+                               pch=4, pch.col = "black")
+
+ggplotly(colch.monthly_cor)
+```
+
+Observation for Correlation analysis between temp variables and crime counts revealed:
+
+* red, positive correlation
+
+* white, no correlation 
+
+* purple, negative correlation
+
+* spaces marked with "X", indicate no statistically significant correlation at defined alpha (0.01 or 0.05)
+
+* crime_count shows no strong linear correlation with the temp variables
+* while temp variables such as (avg_temp, min_temp, max_temp) are strongly positively correlated with one another. Expected, as temp variables represent different measures of the same underlying factor (temperature), and naturally react in tandem.
+
+### Time Series
+
+```{r}
+
+#count crimes by date
+crime_over_time <- crime %>%
+  count(date_parsed, name = "crime_count")  # Count crimes per day
+
+# Create the time series plot
+crime_over_time_plot <- ggplot(crime_over_time, aes(x = date_parsed, 
+                                                    y = crime_count)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "red") +
+  labs(
+    title = "Daily Crime Incidents in Colchester (2024)",
+    x = "Date", 
+    y = "Number of Crimes") +
+  theme_minimal() +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#interactive
+ggplotly(crime_over_time_plot)
+```
+
+
+```{r}
+#time series plot to observe the highest crime category over the year
+# Create violent crimes data frame
+v_df <- crime %>%
+  filter(category == "violent-crime") %>%  # Filter for violent crimes
+  group_by(year_month) %>% 
+  summarise(total_v = n(), .groups = 'drop')  # Count occurrences
+
+# Prepare variables for time series plotting
+v.months <- ym(v_df$year_month)  # Convert to date object
+v_crimes <- as.numeric(v_df$total_v)  # Total violent crimes by year_month to numeric for plot
+
+# Create a data frame for plotting
+v_plot_data <- data.frame(months = v.months, crimes = v_crimes)
+
+# Plot using ggplot
+v_ts.plot <- ggplot(v_plot_data, aes(x = months, y = crimes)) +
+  geom_point(color = "red") +
+  geom_line(color = "steelblue") +
+  labs(
+    title = "Violent Crimes in Colchester in 2024 by Month", 
+       x = "Year",
+       y = "Number of Violent Crimes") +
+  theme_minimal()+
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") + #add individual coordinate xlabs 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+
+# Create interactive plot
+v_ts.plotly <- ggplotly(v_ts.plot)
+v_ts.plotly
+
+```
+
+
+Observation for time series of Violent Crimes in Colchester in 2024 by Month:
+
+* July had the highest violent crime count (242 incidents).
+
+* April had the lowest (162 incidents).
+
+* Crime rates were higher during summer months, while spring and autumn showed lower rates.
+
+However, the pattern is not linear, Several months (for example: May and October) had declines in violent crime, indicating the presence of other influencing factors, potentially local events, law enforcement interventions, or socioeconomic conditions.
+
+Overall, the data supports the broader narrative that crime rates, particularly violent crime, tend to increase during the summer months, reinforcing the rationale behind seasonal crime analysis in this report.
+
+### Map
+* Interactive Leaflet map of crime counts and locations
+```{r message=FALSE}
+#visualising crime on colchester map 2024
+
+crime_map<- crime%>%
+  group_by(lat, long, street_name)%>%
+  summarise(crimes=n(), .groups = 'drop')%>%  # Count occurrences
+  
+  #plot map
+  leaflet()%>%
+  addTiles()%>%
+  setView(0.901028, 51.89301, zoom= 12)%>%
+  addCircleMarkers(radius=~crimes*0.13, color= "red", 
+                   popup = ~paste(street_name, "<br>Crimes: ", crimes))
+
+crime_map
+```
+
+Observation for Interactive Leaflet map of crime counts and locations:
+* Hotspots for crime included town centre mainly on or near shopping areas (230 counts), the police station (166), on or near george street (140) and so on. 
+
+These areas likely experienced more crime due to higher pedestrian traffic, which increases the opportunity for offences such as theft and robbery.
+
+A potential limitation of this analysis was that the specific types of crime occurring in each location were not explored. Future work could involve spatially filtering crime categories to identify whether certain areas are more prone to specific offences, using tools such as clustered point analysis or location-based filtering in Leaflet.
+
+## Key Findings 
+The findings revealed a seasonal pattern in crime rates, with summer emerging as the least safe period in 2024. July had the highest number of violent crime incidents, likely driven by increased social activity and warmer weather. Spring and winter recorded comparatively lower crime levels.
+
+Although strong variable relationships were identified among weather features, no statistically significant linear relationships between weather variables and crime counts were observed. This implied that the connection between these weather factors and crime was indirect or non-linear.
+
+Spatial analysis highlighted concentrated crime activity in Colchester's central areas, indicative of the influence of geographic and demographic factors (for example: high streets, main roads, shopping malls and entertainment venues). These locations tend to attract larger crowds and provide greater anonymity for offenders, making the public more vulnerable to crimes such as theft, assault, or anti-social behaviour.
+
+## Conclusion 
+This analysis confirmed that crime in Colchester displayed seasonal variation, with the summer months representing a period of higher crime risk. However, the absence of significant linear correlations between these weather and crime features suggests that other social and environmental factors may have influence.
+
+Based on the findings, it is recommended that crime prevention efforts focus more intensively on the summer months and in urban hotspots. Further research should consider incorporate socio-economic data and employ non-linear models to more effectively capture the underlying drivers of crime. Additionally, future studies could investigate the types of crimes committed at specific locations to better tailor interventions.
+
+## References
+
+https://www.datacamp.com/cheat-sheet/xts-cheat-sheet-time-series-in-r
+https://plotly.com/r/reference/#Layout_and_layout_style_objects
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
