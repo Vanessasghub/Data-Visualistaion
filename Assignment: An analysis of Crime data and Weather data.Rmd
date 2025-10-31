@@ -1,8 +1,7 @@
 ---
-title: 'MA304 Assignment: An analysis of Crime data and Weather data in Colchester
+title: 'Assignment: An analysis of Crime data and Weather data in Colchester
   in 2024'
-author: '2401723'
-date: "2025-03-21"
+date: "2025-03"
 output:
   html_document: default
 ---
